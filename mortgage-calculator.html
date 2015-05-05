@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html ng-app="FixedRateMortgageApp">
+  <head>
+    <link rel="stylesheet" type="text/css" href="bootstrap.min.css" />
+	<link rel="stylesheet" type="text/css" href="app.css" />
+
+	<!-- include d3 -->
+    <script type="text/javascript" src="d3.min.js"></script>
+	<link rel="stylesheet" type="text/css" href="nv.d3.css" />
+    <script type="text/javascript" src="nv.d3.min.js"></script>
+
+    <script type="text/javascript" src="angular.min.js"></script>
+	<script type="text/javascript" src="angularjs-nvd3-directives.js"></script>
+    <script type="text/javascript" src="app.js"></script>
+    <script src="i18n/angular-locale_de-de.js"></script>
+  </head>
+  <body ng-controller="FixedRateMortgageController as mortgageCtrl">
+    <!--  Review Form -->
+    <form name="reviewForm" ng-submit="reviewForm$valid && mortgageCtrl.computeSchedule()" novalidate>
+      <!--  Live Preview -->
+      <blockquote>
+        <strong>{{0.01 * mortgageCtrl.mortgage.amount * mortgageCtrl.mortgage.interest}} interest</strong>
+		<strong>{{0.01 * mortgageCtrl.mortgage.amount * mortgageCtrl.mortgage.repayment}} repayment</strong>
+      </blockquote>
+	  
+	  <!-- amount -->
+	  <input ng-model="mortgageCtrl.mortgage.amount" ng-change="mortgageCtrl.computeSchedule()" type="number" min="0" step="1" class="form-control" placeholder="amount" title="Amount" required/>
+	  <input ng-model="mortgageCtrl.mortgage.interest" ng-change="mortgageCtrl.computeSchedule()" type="number" min="0" step="1" class="form-control" placeholder="interest" title="Interest" required/>
+	  <input ng-model="mortgageCtrl.mortgage.repayment" ng-change="mortgageCtrl.computeSchedule()" type="number" min="0" step="1" class="form-control" placeholder="repayment" title="Amount" required/>
+	  <!--<input type="submit" class="btn btn-primary pull-right" value="Compute Schedule" />-->
+      <blockquote>
+        <strong>Payment: {{mortgageCtrl.mortgage.payment | currency}}</strong> <br />
+        <strong>Total Payment: {{mortgageCtrl.mortgage.totalPayment | currency}}</strong> <br />
+        <strong>Total Interest: {{mortgageCtrl.mortgage.totalInterest | currency}}</strong>
+      </blockquote>
+
+      <!--  Review Form 
+      <h4>Enter your data</h4>
+      <fieldset class="form-group">
+        <select class="form-control" ng-options="stars for stars in [5,4,3,2,1]"  title="Stars">
+          <option value="">Rate the Product</option>
+        </select>
+      </fieldset>
+      <fieldset class="form-group">
+        <textarea class="form-control" placeholder="Write a short review of the product..." title="Review"></textarea>
+      </fieldset>
+      <fieldset class="form-group">
+        <input type="email" class="form-control" placeholder="jimmyDean@example.org" title="Email" />
+      </fieldset>
+      <fieldset class="form-group">
+        <input type="submit" class="btn btn-primary pull-right" value="Submit Review" />
+      </fieldset>
+	  -->
+	  
+	<!-- why does tooltip not work? -->
+	<div class="container-fluid">
+	<div class="row">
+	<div class="col-sm-6">
+	<nvd3-line-chart
+		data="mortgageCtrl.graphData"
+		id="exampleId"
+		xAxisTickFormat="xAxisTickFormat()"
+		yAxisTickFormat="yAxisTickFormat()"
+		width="600"
+		height="400"
+		tooltips="true"
+		tooltipcontent="graphDataTooltipContentFunction()"
+		interpolate="step"
+		interactive="true"
+		showXAxis="true"
+		showYAxis="true"
+		isArea="true"
+		showLegend="true">
+	</nvd3-line-chart>
+	</div>
+
+	<div class="col-sm-2">
+	  <table class="table table-bordered table-hover table-condensed table-striped" ng-show="mortgageCtrl.mortgage.repaymentSchedule.length > 0">
+		<thead>
+		<tr>
+			<th>Year</th>
+			<th>Principal</th>
+			<th>Payment</th>
+			<th>Interest Component</th>
+			<th>Repayment Component</th>
+		</tr>
+		</thead>
+		<tr ng-repeat="scheduleElement in mortgageCtrl.mortgage.repaymentSchedule">
+			<td>{{scheduleElement.index}} </td>
+			<td>{{scheduleElement.principal | currency}} </td>
+			<td>{{scheduleElement.payment | currency}} </td>
+			<td>{{scheduleElement.interestComponent | currency}} </td>
+			<td>{{scheduleElement.repaymentComponent | currency}} </td>
+		</tr>
+		<!-- sum -->
+	  </table>
+	  </div>
+	  </div>
+	</div>
+    </form>
+  </body>
+</html>
