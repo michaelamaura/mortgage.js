@@ -3,73 +3,130 @@
 
     // http://stackoverflow.com/questions/14047809/js-defineproperty-and-prototype
     var Mortgage = (function () {
-        function Mortgage(amount, interest, repayment) {
+        function Mortgage(amount, interestInPercent, repaymentInPercent) {
             // Define property for field values
             Object.defineProperty(this, "_", { value: {} });
 
             this._.amount = amount;
-            this._.interest = interest;
-            this._.repayment = repayment;
+            this._.interestInPercent = interestInPercent;
+            this._.repaymentInPercent = repaymentInPercent;
 
             this.computeSchedule();
+
+            Object.seal(this);
         }
 
-        Object.defineProperty(Mortgage.prototype, "payment", {
-            get: function () { return 0.01 * this._.amount * (this._.interest + this._.repayment); }
-        });
-
+        /**
+         * Recompute a new schedule.
+         */
         Mortgage.prototype.computeSchedule = function () {
-            this._.repaymentSchedule = [];
+            this._.repaymentSchedule = [{
+                index: 0,
+                principal: this._.amount,
+                repaymentComponent: 0,
+                interestComponent: 0,
+                payment: 0,
+                additionalRepayment: 0
+            }];
+            this.recomputeScheduleFrom(0);
+        };
 
-            this._.totalPayment = 0;
-            this._.totalInterest = 0;
+        Mortgage.prototype.recomputeScheduleFrom = function (index) {
+            var monthlyInterestRate = Math.pow((1 + 0.01 * this.interestInPercent), 1/12) - 1;
 
-            var principal = this._.amount;
-            var index = 0;
-            while (principal > 0) {
-                var interestComponent = 0.01 * principal * this.interest;
-                var repaymentComponent = Math.min(principal, this.payment - interestComponent);
-                var actualPayment = interestComponent + repaymentComponent;
+            // TODO do not delete dangling repayments, but just adjust them
+            this._.repaymentSchedule = this._.repaymentSchedule.slice(0, index + 1);
+            var prev = this._.repaymentSchedule[index];
+            do {
+                var currentPrincipal = prev.principal - prev.repaymentComponent - prev.additionalRepayment;
+                var interestComponent = currentPrincipal * monthlyInterestRate;
+                var repaymentComponent = Math.min(currentPrincipal, this.monthlyPayment - interestComponent);
+                var additionalRepayment = 0;
 
-                this._.repaymentSchedule.push({
-                    index: index,
-                    principal: principal,
-                    payment: actualPayment,
+                var current = {
+                    index: prev.index + 1,
+                    year: Math.floor(prev.index/12) + 1,
+                    month: prev.index % 12 + 1,
+                    principal: currentPrincipal,
+                    payment: interestComponent + repaymentComponent,
                     interestComponent: interestComponent,
-                    repaymentComponent: repaymentComponent
-                });
+                    repaymentComponent: repaymentComponent,
+                    additionalRepayment: additionalRepayment
+                };
 
-                this._.totalPayment += actualPayment;
-                this._.totalInterest += interestComponent;
+                this._.repaymentSchedule.push(current);
 
-                principal -= repaymentComponent;
-                index += 1;
+                prev = current;
+            } while (prev.principal > 0);
+
+            function sum(augend, addend) {
+                return augend + addend;
             }
+
+            this._.totalPayment =
+                this._.repaymentSchedule
+                    .map(function(e) { return e.payment })
+                    .reduce(sum, 0);
+
+            this._.totalInterest =
+                this._.repaymentSchedule
+                    .map(function(e) { return e.interestComponent })
+                    .reduce(sum, 0);
         };
 
-        var defineProperties = function (propertyNames, descriptorFunc) {
-            propertyNames.forEach(function (propertyName) {
-                Object.defineProperty(Mortgage.prototype, propertyName, descriptorFunc(propertyName));
-            });
-        };
-
-        var readOnlyFields = ["totalPayment", "totalInterest", "repaymentSchedule"];
-        defineProperties(readOnlyFields, function (propertyName) {
+        function createReadOnlyPropertyDescriptorFor(propertyName, callback) {
             return {
-                get: function () { return this._[propertyName]; }
+                get: function () { return this._[propertyName]; },
+                configurable: false
             };
-        });
+        }
 
-        var dataFields = ["amount", "interest", "repayment"];
-        defineProperties(dataFields, function (propertyName) {
+        function createObservablePropertyDescriptorFor(propertyName, callback) {
             return {
                 get: function () { return this._[propertyName]; },
                 set: function (newValue) {
                     this._[propertyName] = newValue;
-                    this.computeSchedule();
-                }
+                    callback.call(this);
+                },
+                configurable: false
             };
+        }
+
+        Object.defineProperty(Mortgage.prototype, "annualPayment", {
+            get: function () { return this._.amount * 0.01 * (this._.interestInPercent + this._.repaymentInPercent); },
+            configurable: false
         });
+
+        Object.defineProperty(Mortgage.prototype, "monthlyPayment", {
+            get: function () { return this.annualPayment / 12; },
+            configurable: false
+        });
+
+        var descriptorsForReadOnlyProperties =
+            ["totalPayment", "totalInterest", "repaymentSchedule"].reduce(
+                function(props, propertyName) {
+                    props[propertyName] =
+                        createReadOnlyPropertyDescriptorFor(propertyName);
+                    return props;
+                }, {});
+
+        Object.defineProperties(
+            Mortgage.prototype,
+            descriptorsForReadOnlyProperties);
+
+        var descriptorsForObservableProperties =
+            ["amount", "interestInPercent", "repaymentInPercent"].reduce(
+                function(props, propertyName) {
+                    props[propertyName] =
+                        createObservablePropertyDescriptorFor(
+                            propertyName,
+                            Mortgage.prototype.computeSchedule);
+                    return props;
+                }, {});
+
+        Object.defineProperties(
+            Mortgage.prototype,
+            descriptorsForObservableProperties);
 
         return Mortgage;
     }());
@@ -81,20 +138,31 @@
         this.mortgage = new Mortgage(35000, 0, 7);
 
         // compute an repayment schedule
-        this.computeSchedule = function () {
-            var values = [];
+        this.recomputeGraph = function () {
+            console.log("recomputeGraph");
+
+            var principalValues = [];
             this.mortgage.repaymentSchedule.forEach(function (scheduleElement) {
-                values.push([scheduleElement.index, scheduleElement.principal]);
+                principalValues.push([scheduleElement.index, scheduleElement.principal]);
             });
 
-            var graphData = [{key: "Principal", values: values}];
-			this.graphData = graphData;
+
+            var repaymentValues = [];
+            this.mortgage.repaymentSchedule.forEach(function (scheduleElement) {
+                repaymentValues.push([scheduleElement.index, this.mortgage.amount - scheduleElement.principal]);
+            }, this);
+
+            var graphData = [
+                {key: "Principal", values: principalValues},
+                {key: "Repayment", values: repaymentValues}
+            ];
+            this.graphData = graphData;
         };
 
-        this.computeSchedule();
+        this.recomputeGraph();
 
-		$scope.graphDataTooltipContentFunction = function () {
-			return function (key, x, y, e, graph) {
+        $scope.graphDataTooltipContentFunction = function () {
+            return function (key, x, y, e, graph) {
                 return "Super New Tooltip" +
                     "<h1>" + key + "</h1>" +
                     "<p>" + y + " at " + x + "</p>";
